@@ -73,7 +73,8 @@ class CLDNN(nn.Module):
         #print(outputs.size())
         mask = self.output_layer(outputs)
         #print(outputs.size())
-        outputs = mask*inputs
+        #outputs = mask*inputs
+        outputs = mask
         return outputs, outputs[:, :, self.left_context*self.output_dim:(self.left_context+1)*self.output_dim]
 
     def get_params(self, weight_decay):
