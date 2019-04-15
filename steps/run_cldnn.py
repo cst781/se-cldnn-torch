@@ -36,12 +36,13 @@ def train(model, args, device, writer):
             right_context=args.right_context,
             fft_len=args.fft_len,
             window_type=args.win_type))
-    print_freq = 50
+    print_freq = 10
     num_batch = len(dataloader)
     params = model.get_params(args.weight_decay)
     optimizer = optim.Adam(params, lr=args.learn_rate)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, 'min', factor=0.5, patience=1, verbose=True)
+    
     if args.retrain:
         start_epoch, step = reload_model(model, optimizer, args.exp_dir,
                                          args.use_cuda)
@@ -217,7 +218,7 @@ def main(args):
         kernel_size=args.kernel_size,
         kernel_num=args.kernel_num,
         dropout=args.dropout)
-    if args.log_dir:
+    if not args.log_dir:
         writer = SummaryWriter(os.path.join(args.exp_dir, 'tensorboard'))
     else:
         writer = SummaryWriter(args.log_dir)
