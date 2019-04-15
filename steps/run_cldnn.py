@@ -71,7 +71,7 @@ def train(model, args, device, writer):
             inputs = inputs.to(device)
             labels = labels.to(device)
             lengths = lengths.to(device)
-            model.zero_grad()
+            optimizer.zero_grad()
             outputs, _ = data_parallel(model, (inputs, lengths))
             loss = model.loss(outputs, labels)
             loss.backward()
@@ -83,7 +83,7 @@ def train(model, args, device, writer):
                 eplashed = time.time() - stime
                 speed_avg = eplashed / (idx + 1)
                 loss_print_avg = loss_print / print_freq
-                print('Epoch {:3d}/{:3d} | batches {:5d}/{5d} | lr {:1.4e} |'
+                print('Epoch {:3d}/{:3d} | batches {:5d}/{:5d} | lr {:1.4e} |'
                       '{:2.3f}s/batches | loss {:2.6f}'.format(
                           epoch, args.max_epoch, idx + 1, num_batch, lr,
                           speed_avg, loss_print_avg))

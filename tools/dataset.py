@@ -101,13 +101,14 @@ class DataReader(object):
     def extract_feature(self, path):
         path = path['inputs']
         utt_id = path.split('/')[-1]
-
+        
         data = voicebox.audioread(path)
         inputs = voicebox.enframe(data, self.window, self.win_len,self.win_inc)
         inputs = np.fft.rfft(inputs, n=self.fft_len)
         sinputs = utils.splice_feats(np.abs(inputs).astype(np.float32), left=self.left_context, right=self.left_context)
+       
         length, dims = sinputs.shape
-        sinputs = np.reshape(sinputs, [1, length, dims])
+        #sinputs = np.reshape(sinputs, [length, dims])
         nsamples = data.shape[0]
         return sinputs, [length], np.angle(inputs), utt_id, nsamples
 

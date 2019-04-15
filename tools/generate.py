@@ -14,7 +14,9 @@ def generate(src, tgt, pre):
                 data = voicebox.audioread(path)
                 lenth = data.shape[0]
                 wfid.writelines(pre+name+' '+path+' '+str(lenth/sample_rate)+'\n')
-pre = '/home/disk2/SE_data/noisy_for_reconst'
-generate('./clean_wav.lst', './all.scp', pre)
+#pre='/home/yxhu/work_nfs/data/tfrecords_station_noise_-5_5/addnoise_2w_chosen_station_noise_-5_5_noisy/'
+#generate('./clean_wav.lst', './all.scp', pre)
+pre='/home/yxhu/work_nfs2/data/test3000_new_data_noisy/wav/'
+generate('./test_clean.lst', './test.lst', pre)
 
 
