@@ -30,6 +30,7 @@ class Processer(object):
                       }[window_type]
     def process(self, path):
         inputs = voicebox.audioread(path['inputs'])
+        print(inputs.shape)
         inputs = voicebox.enframe(inputs, self.window, self.win_len,self.win_inc)
         inputs = voicebox.fft(inputs, self.fft_len)
         sinputs = utils.splice_feats(inputs, left=self.left_context, right=self.left_context)
@@ -107,7 +108,7 @@ class DataReader(object):
         inputs = np.fft.rfft(inputs, n=self.fft_len)
         sinputs = utils.splice_feats(np.abs(inputs).astype(np.float32), left=self.left_context, right=self.left_context)
         length, dims = sinputs.shape
-        sinputs = np.reshape(sinputs, [1, length, dims])
+        sinputs = np.reshape(sinputs, [length, dims])
         nsamples = data.shape[0]
         return sinputs, [length], np.angle(inputs), utt_id, nsamples
 
