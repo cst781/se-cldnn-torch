@@ -1,0 +1,50 @@
+#!/bin/bash 
+
+input_dim=257
+output_dim=257
+left_context=1
+right_context=1
+lr=0.001
+win_len=400
+win_inc=100
+fft_len=512
+win_type=hamming
+batch_size=8
+max_epoch=22
+rnn_units=512
+rnn_layers=2
+tt_list=data/tt.lst
+tr_list=data/tr.lst
+cv_list=data/cv.lst
+tt_list=data/test_2018.lst
+tr_list=data/train_2018.lst
+cv_list=data/dev_2018.lst
+tt_list=data/test_hw.lst
+kernel_size=6
+kernel_num=9
+dropout=0.2
+retrain=0
+exp_dir=exp/cldnn_${left_context}_${right_context}_${lr}/
+if [ ! -d ${exp_dir} ] ; then
+    mkdir ${exp_dir}
+fi
+CUDA_VISIBLE_DEVICES='0' nohup python ./steps/run_cldnn.py \
+    --decode=0 \
+    --fft-len=${fft_len} \
+    --exp-dir=${exp_dir} \
+    --tr-list=${tr_list} \
+    --cv-list=${cv_list} \
+    --tt-list=${tt_list} \
+    --retrain=${retrain} \
+    --rnn-layers=${rnn_layers} \
+    --rnn-units=${rnn_units} \
+    --learn_rate=${lr} \
+    --max-epoch=${max_epoch} \
+    --dropout=${dropout} \
+    --left-context=${left_context} \
+    --right-context=${right_context} \
+    --batch-size=${batch_size} \
+    --kernel-size=${kernel_size} \
+    --kernel-num=${kernel_num} \
+    --window-type=${win_type} > ${exp_dir}/train.log &
+

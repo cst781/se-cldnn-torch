@@ -16,6 +16,41 @@ import voicetool.utils as utils
 import voicetool.multiworkers as worker
 from misc import read_and_config_file
 
+class DataReader(object):
+    def __init__(self, file_name, win_len=400, win_inc=100,left_context=0,right_context=0, fft_len=512, window_type='hamming'):
+        self.left_context = left_context
+        self.left_context = left_context
+        self.right_context = right_context
+        self.win_len = win_len
+        self.win_inc = win_inc
+        self.fft_len = fft_len
+        self.window = {
+                        'hamming':np.hamming(self.win_len)/1.2607934,
+                        'none':np.ones(self.win_len)
+                      }[window_type]
+        self.file_list = read_and_config_file(file_name, decode=True)
+
+    def extract_feature(self, path):
+        path = path['inputs']
+        utt_id = path.split('/')[-1]
+        
+        data = voicebox.audioread(path)
+        inputs = voicebox.enframe(data, self.window, self.win_len,self.win_inc)
+        inputs = np.fft.rfft(inputs, n=self.fft_len)
+        sinputs = utils.splice_feats(np.abs(inputs).astype(np.float32), left=self.left_context, right=self.left_context)
+       
+        length, dims = sinputs.shape
+        sinputs = np.reshape(sinputs, [1, length, dims])
+        nsamples = data.shape[0]
+        return sinputs, [length], np.angle(inputs), utt_id, nsamples
+
+    def __len__(self):
+        return len(self.file_list)
+
+    def __getitem__(self, index):
+        return self.extract_feature(self.file_list[index])
+
+
 class Processer(object):
 
     def __init__(self, win_len=400, win_inc=100,left_context=0,right_context=0, fft_len=512, window_type='hamming'):
@@ -29,14 +64,15 @@ class Processer(object):
                         'none':np.ones(self.win_len)
                       }[window_type]
     def process(self, path):
+
         inputs = voicebox.audioread(path['inputs'])
-        print(inputs.shape)
         inputs = voicebox.enframe(inputs, self.window, self.win_len,self.win_inc)
         inputs = voicebox.fft(inputs, self.fft_len)
         sinputs = utils.splice_feats(inputs, left=self.left_context, right=self.left_context)
+        
         labels = voicebox.audioread(path['labels'])
         labels = voicebox.enframe(labels, self.window, self.win_len, self.win_inc)
-        labels = voicebox.fft(inputs, self.fft_len)
+        labels = voicebox.fft(labels, self.fft_len)
         slabels = utils.splice_feats(labels, left=self.left_context, right=self.left_context)
         
         return sinputs, slabels, sinputs.shape[0]
@@ -85,41 +121,6 @@ class Sampler(tud.sampler.Sampler):
     def __len__(self):
         return len(self.data_source)
 
-class DataReader(object):
-    def __init__(self, file_name, win_len=400, win_inc=100,left_context=0,right_context=0, fft_len=512, window_type='hamming'):
-        self.left_context = left_context
-        self.left_context = left_context
-        self.right_context = right_context
-        self.win_len = win_len
-        self.win_inc = win_inc
-        self.fft_len = fft_len
-        self.window = {
-                        'hamming':np.hamming(self.win_len)/1.2607934,
-                        'none':np.ones(self.win_len)
-                      }[window_type]
-        self.file_list = read_and_config_file(file_name, decode=True)
-
-    def extract_feature(self, path):
-        path = path['inputs']
-        utt_id = path.split('/')[-1]
-        
-        data = voicebox.audioread(path)
-        inputs = voicebox.enframe(data, self.window, self.win_len,self.win_inc)
-        inputs = np.fft.rfft(inputs, n=self.fft_len)
-        sinputs = utils.splice_feats(np.abs(inputs).astype(np.float32), left=self.left_context, right=self.left_context)
-       
-        length, dims = sinputs.shape
-        #sinputs = np.reshape(sinputs, [length, dims])
-        sinputs = np.reshape(sinputs, [length, dims])
-        nsamples = data.shape[0]
-        return sinputs, [length], np.angle(inputs), utt_id, nsamples
-
-    def __len__(self):
-        return len(self.file_list)
-
-    def __getitem__(self, index):
-        return self.extract_feature(self.file_list[index])
-
 
 def zero_pad_concat(inputs):
     max_t = max(inp.shape[0] for inp in inputs)
@@ -148,4 +149,5 @@ def make_loader(scp_file_name, batch_size, num_workers=12, processer=Processer()
                             collate_fn=collate_fn,
                             drop_last=False
                             )
+                            #shuffle=True,
     return loader, dataset

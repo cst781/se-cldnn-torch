@@ -36,9 +36,10 @@ def train(model, args, device, writer):
             right_context=args.right_context,
             fft_len=args.fft_len,
             window_type=args.win_type))
-    print_freq = 10
+    print_freq = 2
     num_batch = len(dataloader)
-    params = model.get_params(args.weight_decay)
+    #params = model.get_params(args.weight_decay)
+    params = model.get_params()
     optimizer = optim.Adam(params, lr=args.learn_rate)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, 'min', factor=0.5, patience=1, verbose=True)
@@ -50,7 +51,7 @@ def train(model, args, device, writer):
         start_epoch, step = 0, 0
     print('---------PRERUN-----------')
     lr = get_learning_rate(optimizer)
-    print('(initialization)')
+    print('(Initialization)')
     val_loss = validation(model, args, lr, -1, device)
     writer.add_scalar('Loss/Train', val_loss, step)
     writer.add_scalar('Loss/Cross-Validation', val_loss, step)
@@ -72,11 +73,13 @@ def train(model, args, device, writer):
             inputs = inputs.to(device)
             labels = labels.to(device)
             lengths = lengths.to(device)
-            optimizer.zero_grad()
+            
+            model.zero_grad()
             outputs, _ = data_parallel(model, (inputs, lengths))
             loss = model.loss(outputs, labels)
             loss.backward()
             optimizer.step()
+
             step += 1
             loss_total += loss.data.cpu()
             loss_print += loss.data.cpu()
@@ -93,13 +96,20 @@ def train(model, args, device, writer):
                 loss_print = 0.0
         eplashed = time.time() - stime
         loss_total_avg = loss_total / num_batch
-        print('Training AVG.LOSS | Epoch {:3d}/{:3d} | lr {:1.4e} |'
-              ' time {:3.2f}mins | loss {:2.6f}'.format(epoch + 1, args.max_epoch,
-                                                    lr, eplashed / 60.0,
-                                                    loss_total_avg.item()))
+        print(
+            'Training AVG.LOSS |'
+            ' Epoch {:3d}/{:3d} | lr {:1.4e} |'
+            ' {:2.3f}s/batch | time {:3.2f}mins |'
+            ' loss {:2.6f}'.format(
+                                    epoch + 1,
+                                    args.max_epoch,
+                                    lr,
+                                    eplashed/num_batch,
+                                    eplashed/60.0,
+                                    loss_total_avg.item()))
         val_loss = validation(model, args, lr, epoch, device)
-        writer.add_scalar('Loss/Cross-Valid', val_loss, step)
-
+        writer.add_scalar('Loss/Cross-Validation', val_loss, step)
+        
         if val_loss > scheduler.best:
             print('Rejected !!! The best is {:2.6f}'.format(scheduler.best))
         else:
@@ -141,10 +151,10 @@ def validation(model, args, lr, epoch, device):
         eplashed = (etime - stime) / num_batch
         loss_total_avg = loss_total / num_batch
 
-    print('CROSSVAL AVG.LOSS | Epoch {:3d}/{:3d}'
-          '| lr {:.6e} | {:2.3f}s/batch| time {:2.1f}s|'
+    print('CROSSVAL AVG.LOSS | Epoch {:3d}/{:3d} '
+          '| lr {:.6e} | {:2.3f}s/batch| time {:2.1f}mins '
           '| loss {:2.8f}'.format(epoch + 1, args.max_epoch, lr, eplashed,
-                                  etime - stime, loss_total_avg))
+                                  (etime - stime)/60.0, loss_total_avg))
     sys.stdout.flush()
     return loss_total_avg
 
@@ -318,7 +328,7 @@ if __name__ == "__main__":
         default=None,
         help='the random seed')
     parser.add_argument(
-        '--num-threads', dest='num_threads', type=int, default=12)
+        '--num-threads', dest='num_threads', type=int, default=10)
     parser.add_argument(
         '--window-len',
         dest='win_len',
@@ -356,7 +366,7 @@ if __name__ == "__main__":
         default=9,
         help='the kernel_num')
     parser.add_argument(
-        '--weight_decay', dest='weight_decay', type=float, default=0.000001)
+        '--weight_decay', dest='weight_decay', type=float, default=0.00001)
     parser.add_argument('--retrain', dest='retrain', type=int, default=0)
     FLAGS, _ = parser.parse_known_args()
     FLAGS.use_cuda = FLAGS.use_cuda and torch.cuda.is_available()

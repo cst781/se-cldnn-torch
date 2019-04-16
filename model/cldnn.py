@@ -20,6 +20,7 @@ class CLDNN(nn.Module):
                 kernel_num=9,
                 dropout=0.2
         ):
+        super(CLDNN, self).__init__()
         self.input_dim = input_dim
         self.output_dim = output_dim
         self.hidden_layers = hidden_layers
@@ -29,6 +30,7 @@ class CLDNN(nn.Module):
         self.kernel_size = kernel_size
         self.kernel_sum = kernel_num
         super(CLDNN,self).__init__() 
+
         self.input_layer = nn.Sequential(
                 nn.Linear((left_context+1+right_context)*input_dim, hidden_units),
                 nn.Tanh()
@@ -53,8 +55,8 @@ class CLDNN(nn.Module):
                 nn.Sigmoid()
             )
         
-        #self.loss_func = nn.MSELoss(reduction='sum')
-        self.loss_func = nn.MSELoss()
+        self.loss_func = nn.MSELoss(reduction='sum')
+        #self.loss_func = nn.MSELoss()
         show_model(self)
         show_params(self)
 
@@ -63,21 +65,22 @@ class CLDNN(nn.Module):
         packed_inputs = torch.nn.utils.rnn.pack_padded_sequence(outputs, lens, batch_first=True)
         outputs, _ = self.rnn_layer(packed_inputs)
         outputs, lens = torch.nn.utils.rnn.pad_packed_sequence(outputs, batch_first=True)
+        # reshape outputs to [batch_size, 1, length, dims]
         outputs = torch.unsqueeze(outputs, 1)
+        # conv outputs to [batch_size, channels, length, dims]
         outputs = self.conv2d_layer(outputs)
-        #print(outputs.size())
+        # conv outputs to [batch_size, dims, length, channels]
         outputs = torch.transpose(outputs, 1, -1)
+        # conv outputs to [batch_size, length, dims, channels]
         outputs = torch.transpose(outputs, 1, 2)
         batch_size, max_len, dims, channels = outputs.size()
         outputs = torch.reshape(outputs, [batch_size, max_len, -1])
-        #print(outputs.size())
         mask = self.output_layer(outputs)
-        #print(outputs.size())
-        #outputs = mask*inputs
-        outputs = mask
+        #outputs = mask
+        outputs = mask*inputs
         return outputs, outputs[:, :, self.left_context*self.output_dim:(self.left_context+1)*self.output_dim]
 
-    def get_params(self, weight_decay):
+    def get_params(self, weight_decay=0.0):
             # add L2 penalty
         weights, biases = [], []
         for name, param in self.named_parameters():

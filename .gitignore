@@ -8,4 +8,4 @@ q*
 nohup.out
 *.scp
 data*
-runs*
+tools/speech_processing_toolbox*
