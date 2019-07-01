@@ -36,10 +36,9 @@ def train(model, args, device, writer):
             right_context=args.right_context,
             fft_len=args.fft_len,
             window_type=args.win_type))
-    print_freq = 2
+    print_freq = 100
     num_batch = len(dataloader)
-    #params = model.get_params(args.weight_decay)
-    params = model.get_params()
+    params = model.get_params(args.weight_decay)
     optimizer = optim.Adam(params, lr=args.learn_rate)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, 'min', factor=0.5, patience=1, verbose=True)
@@ -67,25 +66,28 @@ def train(model, args, device, writer):
         lr = get_learning_rate(optimizer)
         for idx, data in enumerate(dataloader):
             inputs, labels, lengths = data
-            inputs = torch.from_numpy(inputs)
-            labels = torch.from_numpy(labels)
-            lengths = torch.from_numpy(np.array(lengths))
             inputs = inputs.to(device)
             labels = labels.to(device)
             lengths = lengths.to(device)
             
             model.zero_grad()
             outputs, _ = data_parallel(model, (inputs, lengths))
+       #     loss = model.loss(outputs, labels, lengths)
+            
             loss = model.loss(outputs, labels)
             loss.backward()
+            nn.utils.clip_grad_norm_(model.parameters(), args.clip_grad_norm)
             optimizer.step()
-
             step += 1
             loss_total += loss.data.cpu()
             loss_print += loss.data.cpu()
+            
+            del lengths, outputs, labels, inputs, loss, _
+            if (idx+1) % 3000 == 0:
+                save_checkpoint(model, optimizer, epoch + 1, step, args.exp_dir)
             if (idx + 1) % print_freq == 0:
                 eplashed = time.time() - stime
-                speed_avg = eplashed / (idx + 1)
+                speed_avg = eplashed / (idx+1)
                 loss_print_avg = loss_print / print_freq
                 print('Epoch {:3d}/{:3d} | batches {:5d}/{:5d} | lr {:1.4e} |'
                       '{:2.3f}s/batches | loss {:2.6f}'.format(
@@ -109,7 +111,7 @@ def train(model, args, device, writer):
                                     loss_total_avg.item()))
         val_loss = validation(model, args, lr, epoch, device)
         writer.add_scalar('Loss/Cross-Validation', val_loss, step)
-        
+        writer.add_scalar('learn_rate', lr, step) 
         if val_loss > scheduler.best:
             print('Rejected !!! The best is {:2.6f}'.format(scheduler.best))
         else:
@@ -121,7 +123,7 @@ def train(model, args, device, writer):
 
 def validation(model, args, lr, epoch, device):
     dataloader, dataset = make_loader(
-        args.tr_list,
+        args.cv_list,
         args.batch_size,
         num_workers=args.num_threads,
         processer=Processer(
@@ -138,15 +140,14 @@ def validation(model, args, lr, epoch, device):
     with torch.no_grad():
         for idx, data in enumerate(dataloader):
             inputs, labels, lengths = data
-            inputs = torch.from_numpy(inputs)
-            labels = torch.from_numpy(labels)
-            lengths = torch.from_numpy(np.array(lengths))
             inputs = inputs.to(device)
             labels = labels.to(device)
             lengths = lengths.to(device)
             outputs, _ = data_parallel(model, (inputs, lengths))
+#            loss = model.loss(outputs, labels, lengths)
             loss = model.loss(outputs, labels)
             loss_total += loss.data.cpu()
+            del loss, data, inputs, labels, lengths, _,outputs
         etime = time.time()
         eplashed = (etime - stime) / num_batch
         loss_total_avg = loss_total / num_batch
@@ -159,9 +160,9 @@ def validation(model, args, lr, epoch, device):
     return loss_total_avg
 
 
-def reconstruct(inputs, angles, save_id, nsamples, win_len, win_inc):
+def reconstruct(inputs, angles, save_id, nsamples, win_len, win_inc,sample_rate):
 
-    hamming = np.hamming(400)
+    hamming = np.hamming(win_len)
     rec_data = np.zeros(nsamples)
     spec = inputs[0]
     for step in range(spec.shape[0]):
@@ -171,7 +172,7 @@ def reconstruct(inputs, angles, save_id, nsamples, win_len, win_inc):
         rec_data[step * win_inc:step * win_inc + win_len] += time_sample
 
     rec_data = np.where(rec_data > 1., 1., np.where(rec_data < -1, -1., rec_data))
-    voicebox.audiowrite(save_id, rec_data)
+    voicebox.audiowrite(save_id, rec_data, sample_rate=sample_rate)
 
 
 def decode(model, args, device):
@@ -186,7 +187,8 @@ def decode(model, args, device):
             left_context=args.left_context,
             right_context=args.right_context,
             fft_len=args.fft_len,
-            window_type=args.win_type)
+            window_type=args.win_type,
+            sample_rate=args.sample_rate)
         if not os.path.isdir(os.path.join(args.exp_dir, 'rec_wav/')):
             os.mkdir(os.path.join(args.exp_dir, 'rec_wav/'))
         num_samples = len(data_reader)
@@ -204,7 +206,7 @@ def decode(model, args, device):
             reconstruct(outputs.cpu().numpy(), angles,
                       os.path.join(args.exp_dir, 'rec_wav/' + utt_id),
                       nsamples,
-                      args.win_len, args.win_inc)
+                      args.win_len, args.win_inc,args.sample_rate)
             # pool.apply_async(
             #     reconstruct,
             #     args=(outputs, angles,
@@ -218,6 +220,12 @@ def decode(model, args, device):
 
 def main(args):
     device = torch.device('cuda' if args.use_cuda else 'cpu')
+    args.sample_rate = {
+        '8k':8000,
+        '16k':16000,
+        '24k':24000,
+        '48k':48000,
+    }[args.sample_rate]
     model = Model(
         left_context=args.left_context,
         right_context=args.right_context,
@@ -366,7 +374,17 @@ if __name__ == "__main__":
         default=9,
         help='the kernel_num')
     parser.add_argument(
-        '--weight_decay', dest='weight_decay', type=float, default=0.00001)
+        '--num-gpu',
+        dest='num_gpu',
+        type=int,
+        default=1,
+        help='the num gpus to use')
+    parser.add_argument(
+        '--weight-decay', dest='weight_decay', type=float, default=0.00001)
+    parser.add_argument(
+        '--clip-grad-norm', dest='clip_grad_norm', type=float, default=5.)
+    parser.add_argument(
+        '--sample-rate', dest='sample_rate', type=str, default='16k')
     parser.add_argument('--retrain', dest='retrain', type=int, default=0)
     FLAGS, _ = parser.parse_known_args()
     FLAGS.use_cuda = FLAGS.use_cuda and torch.cuda.is_available()

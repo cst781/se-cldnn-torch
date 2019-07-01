@@ -12,8 +12,6 @@ import torch.nn as nn
 import numpy as np
 import os 
 import sys
-sys.path.append('./speech_processing_toolbox/')
-import voicetool.base as voicebox
 
 def read_and_config_file(wave_list, decode=0):
     processed_list = []
@@ -84,3 +82,7 @@ def save_checkpoint(model, optimizer, epoch, step, checkpoint_dir):
     with open(os.path.join(checkpoint_dir, 'checkpoint'), 'w') as f:
         f.write('model.ckpt-{}.pt'.format(epoch))
     print("=> Save checkpoint:", checkpoint_path)
+
+def setup_lr(opt, lr):
+    for param_group in opt.param_groups:
+        param_group['lr'] = lr

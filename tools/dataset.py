@@ -17,7 +17,7 @@ import voicetool.multiworkers as worker
 from misc import read_and_config_file
 
 class DataReader(object):
-    def __init__(self, file_name, win_len=400, win_inc=100,left_context=0,right_context=0, fft_len=512, window_type='hamming'):
+    def __init__(self, file_name, win_len=400, win_inc=100,left_context=0,right_context=0, fft_len=512, window_type='hamming', sample_rate=16000):
         self.left_context = left_context
         self.left_context = left_context
         self.right_context = right_context
@@ -86,23 +86,24 @@ class TFDataset(Dataset):
         '''
         self.wave_list = read_and_config_file(scp_file_name)
         self.processer = processer
-        max_len = max(int(x['duration']) for x in self.wave_list)
-        bucket_diff = 4
-        num_buckets = max_len // bucket_diff
-        buckets = [[] for _ in range(num_buckets)]
-        for x in self.wave_list:
-            bid = min(int(x['duration'])// bucket_diff, num_buckets -1 )
-            buckets[bid].append(x)
+#        max_len = max(int(x['duration']) for x in self.wave_list)
+#        bucket_diff = 1
+#        num_buckets = max_len // bucket_diff
+#        buckets = [[] for _ in range(num_buckets)]
+#        for x in self.wave_list:
+#            bid = min(int(x['duration'])// bucket_diff, num_buckets -1 )
+#            buckets[bid].append(x)
 
-        sort_fn = lambda x: round(x['duration'], 1)
-        for b in buckets:
-            b.sort(key=sort_fn)
-        self.data = [d for b in buckets for d in b]
+#        sort_fn = lambda x: round(x['duration'], 1)
+#        for b in buckets:
+#            b.sort(key=sort_fn)
+        self.data_list = self.wave_list #[d for b in buckets for d in b]
+
     def __len__(self):
         return len(self.wave_list)
 
     def __getitem__(self, index):
-        return self.processer.process(self.data[index])
+        return self.processer.process(self.data_list[index])
 
 class Sampler(tud.sampler.Sampler):
     '''
@@ -124,7 +125,7 @@ class Sampler(tud.sampler.Sampler):
 
 def zero_pad_concat(inputs):
     max_t = max(inp.shape[0] for inp in inputs)
-    shape = (len(inputs), max_t, inputs[0].shape[1])
+    shape = np.array([len(inputs), max_t, inputs[0].shape[1]])
     inputs_mat = np.zeros(shape, np.float32)
     for idx, inp in enumerate(inputs):
         inputs_mat[idx, :inp.shape[0],:] = inp
@@ -137,17 +138,22 @@ def collate_fn(data):
     lens = [lens[x] for x in idx]
     padded_inputs = zero_pad_concat(inputs)
     padded_labels = zero_pad_concat(labels)
-    return padded_inputs[idx], padded_labels[idx], lens
+    return torch.from_numpy(padded_inputs[idx]), torch.from_numpy(padded_labels[idx]), torch.from_numpy(np.array(lens))
 
 def make_loader(scp_file_name, batch_size, num_workers=12, processer=Processer()):
     dataset = TFDataset(scp_file_name, processer)
     sampler = Sampler(dataset, batch_size)
     loader = tud.DataLoader(dataset,
                             batch_size=batch_size,
-                            sampler=sampler,
                             num_workers=num_workers,
+                            sampler=sampler,
                             collate_fn=collate_fn,
                             drop_last=False
-                            )
+                        )
                             #shuffle=True,
-    return loader, dataset
+    return loader, None #, Dataset
+if __name__ == '__main__':
+    laoder,_ = make_loader('../data/tr_yhfu.lst', 4, num_workers=4)
+    for idx, data in enumerate(laoder):
+        inputs, labels, lengths = data
+        print(len(lengths))
