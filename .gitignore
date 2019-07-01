@@ -8,4 +8,20 @@ q*
 nohup.out
 *.scp
 data*
-tools/speech_processing_toolbox*
+dilation_2*
+*__pycache__*
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> d9e531a00c417ccbb9359a397ef4f7074df2e3e2
+zywang*
+16k_model*
+infer/cpp_infer/build*
+*.onnx
+*.pt
+*.lst
+<<<<<<< HEAD
+=======
+>>>>>>> parent of 5f9d603... 	modified:   .gitignore
+=======
+>>>>>>> d9e531a00c417ccbb9359a397ef4f7074df2e3e2
