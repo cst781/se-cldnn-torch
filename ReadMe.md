@@ -36,6 +36,8 @@ find ${aishell_dir}/dev -iname "*.wav" > dev.lst
 find ${aishell_dir}/test -iname "*.wav" > test.lst
 find ${musan}/test -iname "*.wav" > noise.lst # Attention!!, please do not add musan/speech into noise.lst
 
+bash tools/prepare_train.sh
+bash tools/prepare_test.sh
 ```
 
 ## 4. train model
