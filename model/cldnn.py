@@ -70,7 +70,6 @@ class CLDNN(nn.Module):
             )
         
         self.conv2d_layer = nn.Sequential(
-                #nn.Conv2d(in_channels=1,out_channels=kernel_num,kernel_size=(kernel_size, kernel_size), stride=[1,1],padding=(5,5), dilation=(2,2)),
                 Conv2d(in_channels=1, out_channels=kernel_num, kernel_size=(kernel_size, kernel_size)),
                 nn.Tanh(),
                 nn.MaxPool2d(3,stride=1,padding=(1,1))
@@ -111,13 +110,12 @@ class CLDNN(nn.Module):
 
     def forward(self, inputs, lens=None):
         outputs = self.input_layer(inputs)
+
+
         outputs = torch.transpose(outputs,0,1)
-        
-        packed_inputs = torch.nn.utils.rnn.pack_padded_sequence(outputs, lens, batch_first=True)
-        outputs, _ = self.rnn_layer(packed_inputs)
-        outputs, lens = torch.nn.utils.rnn.pad_packed_sequence(outputs, batch_first=True)
-        
+        outputs, _ = self.rnn_layer(outputs)
         outputs = torch.transpose(outputs,0,1)
+
         # reshape outputs to [batch_size, 1, length, dims]
         outputs = torch.unsqueeze(outputs, 1)
         # conv outputs to [batch_size, channels, length, dims]
