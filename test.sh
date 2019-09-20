@@ -13,14 +13,7 @@ batch_size=8
 max_epoch=45
 rnn_units=512
 rnn_layers=2
-tt_list=data/tt.lst
-tr_list=data/tr.lst
-cv_list=data/cv.lst
-tr_list=data/train_aishell1.lst
-cv_list=data/dev_aishell1.lst
-cv_list=data/dev_aishell1_-5~20.lst
-tr_list=data/train_aishell1_-5~20.lst
-tt_list=data/test_testaishell1.lst
+tt_list=t
 kernel_size=6
 kernel_num=9
 dropout=0.2
@@ -36,8 +29,8 @@ exp_dir=exp/${save_name}
 if [ ! -d ${exp_dir} ] ; then
     mkdir -p ${exp_dir}
 fi
-    CUDA_VISIBLE_DEVICES='6,7' python -u ./steps/run_sruc.py \
-    --decode=0 \
+    CUDA_VISIBLE_DEVICES='7' python -u ./steps/run_sruc.py \
+    --decode=1 \
     --fft-len=${fft_len} \
     --input-dim=${input_dim} \
     --output-dim=${output_dim} \
@@ -62,5 +55,5 @@ fi
     --kernel-num=${kernel_num} \
     --sample-rate=${sample_rate} \
     --target-mode=${target_mode} \
-    --window-type=${win_type} > ${exp_dir}/train.log &
+    --window-type=${win_type}
 

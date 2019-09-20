@@ -1,4 +1,7 @@
 '''
+
+for eval the model, pesq, stoi, si-sdr
+
 need to install pypesq: 
 https://github.com/vBaiCai/python-pesq
 

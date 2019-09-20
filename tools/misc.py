@@ -26,7 +26,10 @@ def read_and_config_file(wave_list, decode=0):
         else:
             for line in fid:
                 tmp = line.strip().split()
-                sample = {'inputs': tmp[0], 'labels':tmp[1], 'duration':float(tmp[2])}
+                if len(tmp) == 3:
+                    sample = {'inputs': tmp[0], 'labels':tmp[1], 'duration':float(tmp[2])}
+                elif len(tmp) == 2:
+                    sample = {'inputs': tmp[0], 'labels':tmp[1]}
                 processed_list.append(sample)
     return processed_list
 

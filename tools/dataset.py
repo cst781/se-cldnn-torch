@@ -9,8 +9,13 @@ from torch.utils.data import Dataset
 import torch.utils.data as tud
 import os 
 import sys
-sys.path.append(os.path.dirname(sys.path[0])+'/tools')
 sys.path.append(os.path.dirname(sys.path[0])+'/tools/speech_processing_toolbox/')
+sys.path.append('/home/work_nfs3/yxhu/workspace/se-cldnn-torch/tools/speech_processing_toolbox/')
+sys.path.append(
+    os.path.dirname(__file__) + '/tools/speech_processing_toolbox/')
+sys.path.append(
+    os.path.dirname(__file__))
+
 import voicetool.base as voicebox
 import voicetool.utils as utils
 import voicetool.multiworkers as worker
@@ -53,7 +58,7 @@ class DataReader(object):
 
 class Processer(object):
 
-    def __init__(self, win_len=400, win_inc=100,left_context=0,right_context=0, fft_len=512, window_type='hamming'):
+    def __init__(self, win_len=400, win_inc=100,left_context=0,right_context=0, fft_len=512, window_type='hamming', target_mode='MSA'):
         self.left_context = left_context
         self.right_context = right_context
         self.win_len = win_len
@@ -63,16 +68,74 @@ class Processer(object):
                         'hamming':np.hamming(self.win_len)/1.2607934,
                         'none':np.ones(self.win_len)
                       }[window_type]
+        self.label_type = target_mode
     def process(self, path):
 
-        inputs = voicebox.audioread(path['inputs'])
-        inputs = voicebox.enframe(inputs, self.window, self.win_len,self.win_inc)
-        inputs = voicebox.fft(inputs, self.fft_len)
-        sinputs = utils.splice_feats(inputs, left=self.left_context, right=self.left_context)
+        wave_inputs = voicebox.audioread(path['inputs'])
+        frame_inputs = voicebox.enframe(wave_inputs, self.window, self.win_len,self.win_inc)
+        fft_inputs = np.fft.rfft(frame_inputs, self.fft_len)
         
-        labels = voicebox.audioread(path['labels'])
-        labels = voicebox.enframe(labels, self.window, self.win_len, self.win_inc)
-        labels = voicebox.fft(labels, self.fft_len)
+        wave_labels = voicebox.audioread(path['labels'])
+        frame_labels = voicebox.enframe(wave_labels, self.window, self.win_len, self.win_inc)
+        fft_labels = np.fft.rfft(frame_labels, self.fft_len)
+
+        if self.label_type == 'SPEC' or self.label_type == 'MSA' :
+            # spectrum to spectrum, or magnitude spectra approximation (MSA)
+            inputs_mgs = np.abs(fft_inputs) 
+            labels_mgs = np.abs(fft_labels)
+            labels = labels_mgs
+            inputs = inputs_mgs
+
+        elif self.label_type == 'IRM': 
+            # idel ratio mask
+            inputs_mgs = np.abs(fft_inputs) 
+            labels_mgs = np.abs(fft_labels)
+            noise_mgs = np.abs(fft_inputs - fft_labels)
+            mask = labels_mgs**2 / (labels_mgs**2 + noise_mgs**2 + 1e-12)
+            # clip into [0,1]
+            labels = np.clip(mask,0,1)
+            inputs = inputs_mgs
+
+        elif self.label_type == 'IBM':
+            # idel binary mask
+            inputs_mgs = np.abs(fft_inputs) 
+            labels_mgs = np.abs(fft_labels)
+            noise_mgs = np.abs(fft_inputs - fft_labels)
+            mask =  np.where(labels_mgs>noise_mgs, 1., 0.)
+            # clip into [0,1]
+            labels = np.clip(mask,0,1)
+            inputs = inputs_mgs
+
+        elif self.label_type == 'PSM':
+            # phase sensitive mask
+            inputs_mgs = np.abs(fft_inputs) 
+            labels_mgs = np.abs(fft_labels)
+            inputs_angle = np.angle(fft_inputs) 
+            labels_angle = np.angle(fft_labels)
+            mask  = labels_mgs/(inputs_mgs+1e-12)*np.cos(labels_angle - inputs_angle) 
+            # clip into [0,1]
+            labels = np.clip(mask,0,1)
+            inputs = inputs_mgs
+            
+        elif self.label_type == 'PSA':
+            # phase magnitude spectrum approximation: PSA
+            inputs_mgs = np.abs(fft_inputs) 
+            labels_mgs = np.abs(fft_labels)
+            inputs_angle = np.angle(fft_inputs) 
+            labels_angle = np.angle(fft_labels)
+            labels = labels_mgs*np.cos(labels_angle - inputs_angle)
+            inputs = inputs_mgs
+        
+        elif self.label_type == 'TCS':
+            # target complex spec, complex spec mapping
+            real_inputs = np.real(fft_inputs)
+            imag_inputs = np.imag(fft_inputs)
+            real_labels = np.imag(fft_labels)
+            imag_labels = np.imag(fft_labels)
+            inputs = np.concatenate([real_inputs, imag_inputs],-1) 
+            labels = np.concatenate([real_labels, imag_labels],-1) 
+
+        sinputs = utils.splice_feats(inputs, left=self.left_context, right=self.left_context)
         slabels = utils.splice_feats(labels, left=self.left_context, right=self.left_context)
         
         return sinputs, slabels, sinputs.shape[0]

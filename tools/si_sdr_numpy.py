@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 
 # Copyright  2018  Northwestern Polytechnical University (author: Ke Wang)
+# to cal si_sdr
+
 
 from __future__ import absolute_import
 from __future__ import division

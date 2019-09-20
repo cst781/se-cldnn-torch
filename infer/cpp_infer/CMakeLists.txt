@@ -1,10 +1,12 @@
-cmake_minimum_required(VERSION 3.0 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.0)
 
-project(custom_ops)
-set(CMAKE_PREFIX_PATH /home/work_nfs2/yxhu/libs/libtorch)
-set(libsru /home/work_nfs3/yxhu/anaconda2/envs/py36/lib/python3.6/site-packages/sru/build/libsru_cpu_infer.so)
+project(test)
+set(CMAKE_PREFIX_PATH /home/yxhu/work_nfs3/workspace/torch_inference/enhance_for_wechat/third_party/libtorch/)
 find_package(Torch REQUIRED)
+
+add_subdirectory(lib)
+
 add_executable(example-app test.cpp)
 target_link_libraries(example-app "${TORCH_LIBRARIES}")
-target_link_libraries(example-app -Wl,--no-as-needed ${libsru})
+target_link_libraries(example-app -Wl,--no-as-needed sru_cpu_infer)
 set_property(TARGET example-app PROPERTY CXX_STANDARD 11)

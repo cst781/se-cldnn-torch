@@ -16,8 +16,9 @@ sys.path.append(os.path.dirname(sys.path[0]))
 sys.path.append(
     os.path.dirname(sys.path[0]) + '/tools/speech_processing_toolbox')
 
-from model.cldnn import CLDNN as Model
-from tools.misc import get_learning_rate, save_checkpoint, reload_for_eval, reload_model
+from model.cldnn import CLDNN as Model 
+from model.sruc import SRUC as Model
+from tools.misc import get_learning_rate, save_checkpoint, reload_for_eval, reload_model, setup_lr
 from tools.dataset import make_loader, Processer, DataReader
 
 import voicetool.base as voicebox
@@ -54,7 +55,9 @@ def train(model, args, device, writer):
     val_loss = validation(model, args, lr, -1, device)
     writer.add_scalar('Loss/Train', val_loss, step)
     writer.add_scalar('Loss/Cross-Validation', val_loss, step)
-
+    check_steps = 100*print_freq
+    warmup_epoch = 2
+    warmup_lr = args.learn_rate/(4**warmup_epoch)
     for epoch in range(start_epoch, args.max_epoch):
         torch.manual_seed(args.seed + epoch)
         if args.use_cuda:
@@ -63,7 +66,16 @@ def train(model, args, device, writer):
         loss_total = 0.0
         loss_print = 0.0
         stime = time.time()
+        if epoch == 0 and warmup_epoch > 0:
+            print('Use warmup stragery, and the lr is set to {:.5f}'.format(warmup_lr))
+            setup_lr(optimizer, warmup_lr)
+            warmup_lr *= 4
+        elif epoch == warmup_epoch:
+            print('The warmup was end, and the lr is set to {:.5f}'.format(args.learn_rate))
+            setup_lr(optimizer, args.learn_rate)
+
         lr = get_learning_rate(optimizer)
+
         for idx, data in enumerate(dataloader):
             inputs, labels, lengths = data
             inputs = inputs.to(device)
@@ -72,22 +84,21 @@ def train(model, args, device, writer):
             
             model.zero_grad()
             outputs, _ = data_parallel(model, (inputs, lengths))
-            
             loss = model.loss(outputs, labels, lengths)
-            
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), args.clip_grad_norm)
             optimizer.step()
+            
             step += 1
             loss_total += loss.data.cpu()
             loss_print += loss.data.cpu()
             
             del lengths, outputs, labels, inputs, loss, _
-            if (idx+1) % 3000 == 0:
-                save_checkpoint(model, optimizer, epoch + 1, step, args.exp_dir)
             if (idx + 1) % print_freq == 0:
                 eplashed = time.time() - stime
-                speed_avg = eplashed / (idx+1)
+                # because the check_steps stime will flash when idx reaches check_steps,
+                speed_avg = eplashed / ( check_steps if (idx+1)%check_steps ==0 else (idx+1)%check_steps)
+                
                 loss_print_avg = loss_print / print_freq
                 print('Epoch {:3d}/{:3d} | batches {:5d}/{:5d} | lr {:1.4e} |'
                       '{:2.3f}s/batches | loss {:2.6f}'.format(
@@ -96,29 +107,37 @@ def train(model, args, device, writer):
                 sys.stdout.flush()
                 writer.add_scalar('Loss/Train', loss_print_avg, step)
                 loss_print = 0.0
-        eplashed = time.time() - stime
-        loss_total_avg = loss_total / num_batch
-        print(
-            'Training AVG.LOSS |'
-            ' Epoch {:3d}/{:3d} | lr {:1.4e} |'
-            ' {:2.3f}s/batch | time {:3.2f}mins |'
-            ' loss {:2.6f}'.format(
-                                    epoch + 1,
-                                    args.max_epoch,
-                                    lr,
-                                    eplashed/num_batch,
-                                    eplashed/60.0,
-                                    loss_total_avg.item()))
-        val_loss = validation(model, args, lr, epoch, device)
-        writer.add_scalar('Loss/Cross-Validation', val_loss, step)
-        writer.add_scalar('learn_rate', lr, step) 
-        if val_loss > scheduler.best:
-            print('Rejected !!! The best is {:2.6f}'.format(scheduler.best))
-        else:
-            save_checkpoint(model, optimizer, epoch + 1, step, args.exp_dir)
-        scheduler.step(val_loss)
-        sys.stdout.flush()
-        stime = time.time()
+
+            if step % check_steps == 0:
+                eplashed = time.time() - stime
+                loss_total_avg = loss_total / (step - (epoch)*num_batch)
+                print(
+                'Training AVG.LOSS |'
+                ' Epoch {:3d}/{:3d} | lr {:1.4e} |'
+                ' {:2.3f}s/batch | time {:3.2f}mins |'
+                ' loss {:2.6f}'.format(
+                                        epoch + 1,
+                                        args.max_epoch,
+                                        lr,
+                                        eplashed/check_steps,
+                                        eplashed/60.0,
+                                        loss_total_avg.item()))
+                val_loss = validation(model, args, lr, epoch, device)
+                model.train()
+                writer.add_scalar('Loss/Cross-Validation', val_loss, step)
+                writer.add_scalar('learn_rate', lr, step) 
+                
+                # if iteration after warmup_epoch, reset lr sechel to normal 
+                if epoch >= warmup_epoch: 
+                    if val_loss > scheduler.best:
+                        print('Rejected !!! The best is {:2.6f}'.format(scheduler.best))
+                    else:
+                        save_checkpoint(model, optimizer, epoch + 1, step, args.exp_dir)
+                    scheduler.step(val_loss)
+                    sys.stdout.flush()
+                else:
+                    save_checkpoint(model, optimizer, epoch + 1, step, args.exp_dir)
+                stime = time.time()
 
 
 def validation(model, args, lr, epoch, device):
@@ -145,7 +164,6 @@ def validation(model, args, lr, epoch, device):
             lengths = lengths
             outputs, _ = data_parallel(model, (inputs, lengths))
             loss = model.loss(outputs, labels, lengths)
-            
             loss_total += loss.data.cpu()
             del loss, data, inputs, labels, lengths, _,outputs
         etime = time.time()
@@ -207,14 +225,7 @@ def decode(model, args, device):
                       os.path.join(args.exp_dir, 'rec_wav/' + utt_id),
                       nsamples,
                       args.win_len, args.win_inc,args.sample_rate)
-            # pool.apply_async(
-            #     reconstruct,
-            #     args=(outputs, angles,
-            #           os.path.join(args.exp_dir, 'rec_wav/' + utt_id),
-            #           nsamples,
-            #           args.win_len, args.win_inc))
-        # pool.close()
-        # pool.join()
+        
         print('Decode Done!!!')
 
 
@@ -227,15 +238,16 @@ def main(args):
         '48k':48000,
     }[args.sample_rate]
     model = Model(
-        left_context=args.left_context,
-        right_context=args.right_context,
-        hidden_layers=args.rnn_layers,
-        hidden_units=args.rnn_units,
-        input_dim=args.input_dim,
-        output_dim=args.output_dim,
-        kernel_size=args.kernel_size,
-        kernel_num=args.kernel_num,
-        dropout=args.dropout)
+            left_context=args.left_context,
+            right_context=args.right_context,
+            hidden_layers=args.rnn_layers,
+            hidden_units=args.rnn_units,
+            input_dim=args.input_dim,
+            output_dim=args.output_dim,
+            kernel_size=args.kernel_size,
+            kernel_num=args.kernel_num,
+            dropout=args.dropout)
+    
     if not args.log_dir:
         writer = SummaryWriter(os.path.join(args.exp_dir, 'tensorboard'))
     else:
@@ -336,7 +348,7 @@ if __name__ == "__main__":
         default=None,
         help='the random seed')
     parser.add_argument(
-        '--num-threads', dest='num_threads', type=int, default=10)
+        '--num-threads', dest='num_threads', type=int, default=12)
     parser.add_argument(
         '--window-len',
         dest='win_len',
@@ -380,7 +392,7 @@ if __name__ == "__main__":
         default=1,
         help='the num gpus to use')
     parser.add_argument(
-        '--weight-decay', dest='weight_decay', type=float, default=0.00001)
+        '--weight-decay', dest='weight_decay', type=float, default=0.0000001)
     parser.add_argument(
         '--clip-grad-norm', dest='clip_grad_norm', type=float, default=5.)
     parser.add_argument(

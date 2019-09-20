@@ -111,11 +111,12 @@ class CLDNN(nn.Module):
 
     def forward(self, inputs, lens=None):
         outputs = self.input_layer(inputs)
-#        packed_inputs = torch.nn.utils.rnn.pack_padded_sequence(outputs, lens, batch_first=True)
-#        outputs, _ = self.rnn_layer(packed_inputs)
-#        outputs, lens = torch.nn.utils.rnn.pad_packed_sequence(outputs, batch_first=True)
         outputs = torch.transpose(outputs,0,1)
-        outputs, _ = self.rnn_layer(outputs)
+        
+        packed_inputs = torch.nn.utils.rnn.pack_padded_sequence(outputs, lens, batch_first=True)
+        outputs, _ = self.rnn_layer(packed_inputs)
+        outputs, lens = torch.nn.utils.rnn.pad_packed_sequence(outputs, batch_first=True)
+        
         outputs = torch.transpose(outputs,0,1)
         # reshape outputs to [batch_size, 1, length, dims]
         outputs = torch.unsqueeze(outputs, 1)

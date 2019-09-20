@@ -11,24 +11,17 @@ import scipy.signal as signal
 import numpy as np
 import wave
 import scipy.io as sio
-
+import soundfile as sf
 def audioread(path, sample_rate=16000, selected_channels=[1]):
     """
         read wave data like matlab's audioread
         selected_channels: for multichannel wave, return selected_channels' data 
     """
     selected_channels = [ x - 1 for x in selected_channels]
-    fid = wave.open(path, 'rb')
-    params = fid.getparams()
-    nchannels, samplewidth, framerate , nframes = params[:4]
-    strdata = fid.readframes(nframes*nchannels)
-    fid.close()
-    wavedata = np.fromstring(strdata, dtype=np.int16)
-    wavedata = wavedata*1.0/(32768.0*samplewidth/2)
-    if nchannels == 1:
-        return np.reshape(wavedata,[-1])
+    wavedata = sf.read(path)[0]
+    if len(selected_channels) == 1:
+        return wavedata
     else:
-        wavedata = np.reshape(wavedata, [nframes,nchannels])
         return wavedata[:, selected_channels]
 
 def audiowrite(path, data, nchannels=1, samplewidth=2, sample_rate=16000):

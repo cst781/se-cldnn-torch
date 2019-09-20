@@ -55,7 +55,7 @@ def train(model, args, device, writer):
     val_loss = validation(model, args, lr, -1, device)
     writer.add_scalar('Loss/Train', val_loss, step)
     writer.add_scalar('Loss/Cross-Validation', val_loss, step)
-    check_steps = 80*print_freq
+    check_steps = 100*print_freq
     warmup_epoch = 2
     warmup_lr = args.learn_rate/(4**warmup_epoch)
     for epoch in range(start_epoch, args.max_epoch):
@@ -80,12 +80,11 @@ def train(model, args, device, writer):
             inputs, labels, lengths = data
             inputs = inputs.to(device)
             labels = labels.to(device)
-            lengths = lengths #.to(device)
+            lengths = lengths
             
             model.zero_grad()
             outputs, _ = data_parallel(model, (inputs, lengths))
             loss = model.loss(outputs, labels, lengths)
-       #     loss = model.loss(outputs, labels)
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), args.clip_grad_norm)
             optimizer.step()
@@ -97,7 +96,9 @@ def train(model, args, device, writer):
             del lengths, outputs, labels, inputs, loss, _
             if (idx + 1) % print_freq == 0:
                 eplashed = time.time() - stime
-                speed_avg = eplashed / (idx+1)
+                # because the check_steps stime will flash when idx reaches check_steps,
+                speed_avg = eplashed / ( check_steps if (idx+1)%check_steps ==0 else (idx+1)%check_steps)
+                
                 loss_print_avg = loss_print / print_freq
                 print('Epoch {:3d}/{:3d} | batches {:5d}/{:5d} | lr {:1.4e} |'
                       '{:2.3f}s/batches | loss {:2.6f}'.format(
@@ -160,10 +161,10 @@ def validation(model, args, lr, epoch, device):
             inputs, labels, lengths = data
             inputs = inputs.to(device)
             labels = labels.to(device)
-            lengths = lengths#.to(device)
+            lengths = lengths
             outputs, _ = data_parallel(model, (inputs, lengths))
             loss = model.loss(outputs, labels, lengths)
-#            loss = model.loss(outputs, labels)
+            
             loss_total += loss.data.cpu()
             del loss, data, inputs, labels, lengths, _,outputs
         etime = time.time()
@@ -225,14 +226,6 @@ def decode(model, args, device):
                       os.path.join(args.exp_dir, 'rec_wav/' + utt_id),
                       nsamples,
                       args.win_len, args.win_inc,args.sample_rate)
-            # pool.apply_async(
-            #     reconstruct,
-            #     args=(outputs, angles,
-            #           os.path.join(args.exp_dir, 'rec_wav/' + utt_id),
-            #           nsamples,
-            #           args.win_len, args.win_inc))
-        # pool.close()
-        # pool.join()
         print('Decode Done!!!')
 
 

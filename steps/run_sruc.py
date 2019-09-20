@@ -1,7 +1,7 @@
 
 import torch
 import torch.nn as nn
-from tensorboardX import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 import sys
 import os
 import argparse
@@ -22,6 +22,10 @@ from tools.dataset import make_loader, Processer, DataReader
 
 import voicetool.base as voicebox
 import voicetool.multiworkers as worker
+import torch.nn.functional as F
+import warnings
+warnings.filterwarnings("ignore")
+
 
 def train(model, args, device, writer):
     print('preparing data...')
@@ -35,7 +39,9 @@ def train(model, args, device, writer):
             left_context=args.left_context,
             right_context=args.right_context,
             fft_len=args.fft_len,
-            window_type=args.win_type))
+            target_mode=args.target_mode,
+            window_type=args.win_type,
+            ))
     print_freq = 100
     num_batch = len(dataloader)
     params = model.get_params(args.weight_decay)
@@ -68,13 +74,12 @@ def train(model, args, device, writer):
             inputs, labels, lengths = data
             inputs = inputs.to(device)
             labels = labels.to(device)
-            lengths = lengths.to(device)
+            lengths = lengths
             
             model.zero_grad()
             outputs, _ = data_parallel(model, (inputs, lengths))
-       #     loss = model.loss(outputs, labels, lengths)
+            loss = F.mse_loss(outputs, labels, reduction='sum')/lengths.sum()
             
-            loss = model.loss(outputs, labels)
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), args.clip_grad_norm)
             optimizer.step()
@@ -132,6 +137,7 @@ def validation(model, args, lr, epoch, device):
             left_context=args.left_context,
             right_context=args.right_context,
             fft_len=args.fft_len,
+            target_mode=args.target_mode,
             window_type=args.win_type))
     model.eval()
     loss_total = 0.0
@@ -144,8 +150,7 @@ def validation(model, args, lr, epoch, device):
             labels = labels.to(device)
             lengths = lengths.to(device)
             outputs, _ = data_parallel(model, (inputs, lengths))
-#            loss = model.loss(outputs, labels, lengths)
-            loss = model.loss(outputs, labels)
+            loss = F.mse_loss(outputs, labels, reduction='sum')/lengths.sum()
             loss_total += loss.data.cpu()
             del loss, data, inputs, labels, lengths, _,outputs
         etime = time.time()
@@ -235,6 +240,7 @@ def main(args):
         output_dim=args.output_dim,
         kernel_size=args.kernel_size,
         kernel_num=args.kernel_num,
+        target_mode=args.target_mode,
         dropout=args.dropout)
     if not args.log_dir:
         writer = SummaryWriter(os.path.join(args.exp_dir, 'tensorboard'))
@@ -367,6 +373,13 @@ if __name__ == "__main__":
         type=int,
         default=6,
         help='the kernel_size')
+    parser.add_argument(
+        '--target-mode',
+        dest='target_mode',
+        type=str,
+        default='MSA',
+        help='the type of target, MSA, PSA, PSM, IBM, IRM...')
+    
     parser.add_argument(
         '--kernel-num',
         dest='kernel_num',
