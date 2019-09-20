@@ -3,7 +3,7 @@
 ### thanks to Ke Wang and awni's [repo](https://github.com/awni/speech/)
 
 # How to use it ?
-##1. install requirements 
+## 1. install requirements 
 
 ### sru
 ```bash
@@ -23,13 +23,13 @@ python setup.py install
 pip install pystoi
 ```
 
-##2. download dataset 
+## 2. download dataset 
 ### Aishell-1
 https://www.openslr.org/33/
 ### MUSAN
 https://www.openslr.org/17/
 
-##3. prepare train. dev and test data 
+## 3. prepare train. dev and test data 
 ```bash
 find ${aishell_dir}/train -iname "*.wav" > train.lst
 find ${aishell_dir}/dev -iname "*.wav" > dev.lst
@@ -38,12 +38,12 @@ find ${musan}/test -iname "*.wav" > noise.lst # Attention!!, please do not add m
 
 ```
 
-##4. train model
+## 4. train model
 ```bash
 bash run_sruc.sh
 ```
 
-##5. eval model
+## 5. eval model
 ```bash
 bash eval.sh
 ```
